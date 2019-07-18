@@ -11,11 +11,14 @@
 2. [DI依赖注入](#DI依赖注入)
 	* 注入的三种方式
 	* 集合类型的注入
-3. [IOC、DI注解开发](#IOC、DI注解开发)
+3. [IOC、DI注解开发（还存在XML）](#IOC、DI注解开发)
+	* XML约束（注解）
 	* 创建对象的注解
 	* 创建对象的注解
 	* 改变作用范围的注解
 	* 生命周期相关注解
+4. [新注解（用于配置类，解决上诉XML）](#新注解（用于配置类）)
+5. [spring集成junit](#spring集成junit)
 
 ## IOC控制反转
 * 概括：就是把创建对象的工作交给spring容器，以此来降低耦合
@@ -209,6 +212,21 @@
 ```
 
 ## IOC、DI注解开发
+* xml约束
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+       xmlns:context="http://www.springframework.org/schema/context"
+       xsi:schemaLocation="http://www.springframework.org/schema/beans
+        http://www.springframework.org/schema/beans/spring-beans.xsd
+        http://www.springframework.org/schema/context
+        http://www.springframework.org/schema/context/spring-context.xsd">
+
+    <!--告知spring在创建容器时要扫描的包，配置所需要的标签不是在beans的约束中，而是一个名称为context名称空间和约束中-->
+    <context:component-scan base-package="com.spring"/>
+</beans>
+```
 * 曾经XML的配置
 ```xml
 <bean id="accountService" class="com.itheima.service.impl.AccountServiceImpl" scope=""  init-method="" destroy-method="">
@@ -271,4 +289,174 @@
 	```
 * 和生命周期相关的注解（他们的作用就和在bean标签中使用init-method和destroy-method的作用是一样的）
 	* PreDestroy（用于指定销毁方法）
-	* PostConstruct（用于指定初始化方法）
+	* PostConstruct（用于指定初始化方法）3
+
+## 新注解（用于配置类）
+* 主配置类
+```java
+/**
+ * 该类是一个配置类，它的作用和bean.xml是一样的
+ * spring中的新注解
+ * Configuration
+ *     作用：指定当前类是一个配置类
+ *     细节：当配置类作为AnnotationConfigApplicationContext对象创建的参数时，该注解可以不写。
+ * ComponentScan
+ *      作用：用于通过注解指定spring在创建容器时要扫描的包
+ *      属性：
+ *          value：它和basePackages的作用是一样的，都是用于指定创建容器时要扫描的包。
+ *                 我们使用此注解就等同于在xml中配置了:
+ *                      <context:component-scan base-package="com.itheima"></context:component-scan>
+ *  Bean
+ *      作用：用于把当前方法的返回值作为bean对象存入spring的ioc容器中
+ *      属性:
+ *          name:用于指定bean的id。当不写时，默认值是当前方法的名称
+ *      细节：
+ *          当我们使用注解配置方法时，如果方法有参数，spring框架会去容器中查找有没有可用的bean对象。
+ *          查找的方式和Autowired注解的作用是一样的
+ *  Import
+ *      作用：用于导入其他的配置类
+ *      属性：
+ *          value：用于指定其他配置类的字节码。
+ *                  当我们使用Import的注解之后，有Import注解的类就父配置类，而导入的都是子配置类
+ *  PropertySource
+ *      作用：用于指定properties文件的位置
+ *      属性：
+ *          value：指定文件的名称和路径。
+ *                  关键字：classpath，表示类路径下
+ */
+//@Configuration
+@ComponentScan("com.itheima")
+@Import(JdbcConfig.class)
+@PropertySource("classpath:jdbcConfig.properties")
+public class SpringConfiguration {
+}
+```
+
+* 子配置类
+```java
+/**
+ * 和spring连接数据库相关的配置类
+ */
+public class JdbcConfig {
+
+    @Value("${jdbc.driver}")
+    private String driver;
+
+    @Value("${jdbc.url}")
+    private String url;
+
+    @Value("${jdbc.username}")
+    private String username;
+
+    @Value("${jdbc.password}")
+    private String password;
+
+    /**
+     * 用于创建一个QueryRunner对象
+     * @param dataSource
+     * @return
+     */
+    @Bean(name="runner")
+    @Scope("prototype")
+    public QueryRunner createQueryRunner(@Qualifier("ds2") DataSource dataSource){
+        return new QueryRunner(dataSource);
+    }
+
+    /**
+     * 创建数据源对象
+     * @return
+     */
+    @Bean(name="ds2")
+    public DataSource createDataSource(){
+        try {
+            ComboPooledDataSource ds = new ComboPooledDataSource();
+            ds.setDriverClass(driver);
+            ds.setJdbcUrl(url);
+            ds.setUser(username);
+            ds.setPassword(password);
+            return ds;
+        }catch (Exception e){
+            throw new RuntimeException(e);
+        }
+    }
+
+    @Bean(name="ds1")
+    public DataSource createDataSource1(){
+        try {
+            ComboPooledDataSource ds = new ComboPooledDataSource();
+            ds.setDriverClass(driver);
+            ds.setJdbcUrl("jdbc:mysql://localhost:3306/eesy02");
+            ds.setUser(username);
+            ds.setPassword(password);
+            return ds;
+        }catch (Exception e){
+            throw new RuntimeException(e);
+        }
+    }
+}
+```
+
+* 单测入口
+```java
+/**
+ * 测试queryrunner是否单例
+ */
+public class QueryRunnerTest {
+
+    @Test
+    public  void  testQueryRunner(){
+        //1.获取容易
+        ApplicationContext ac = new AnnotationConfigApplicationContext(SpringConfiguration.class);
+        //2.获取queryRunner对象
+        QueryRunner runner = ac.getBean("runner",QueryRunner.class);
+        QueryRunner runner1 = ac.getBean("runner",QueryRunner.class);
+        System.out.println(runner == runner1);
+    }
+}
+``` 
+
+## spring集成junit
+* 添加依赖
+```xml
+<dependency>
+    <groupId>org.springframework</groupId>
+    <artifactId>spring-test</artifactId>
+    <version>5.0.2.RELEASE</version>
+</dependency>
+```
+* 实例
+
+```java
+/**
+ * 使用Junit单元测试：测试我们的配置
+ * Spring整合junit的配置
+ *      1、导入spring整合junit的jar(坐标)
+ *      2、使用Junit提供的一个注解把原有的main方法替换了，替换成spring提供的
+ *             @Runwith
+ *      3、告知spring的运行器，spring和ioc创建是基于xml还是注解的，并且说明位置
+ *          @ContextConfiguration
+ *                  locations：指定xml文件的位置，加上classpath关键字，表示在类路径下
+ *                  classes：指定注解类所在地位置
+ *
+ *   当我们使用spring 5.x版本的时候，要求junit的jar必须是4.12及以上
+ */
+@RunWith(SpringJUnit4ClassRunner.class)
+@ContextConfiguration(classes = SpringConfiguration.class)
+public class AccountServiceTest {
+
+    @Autowired
+    private IAccountService as = null;
+
+
+    @Test
+    public void testFindAll() {
+        //3.执行方法
+        List<Account> accounts = as.findAllAccount();
+        for(Account account : accounts){
+            System.out.println(account);
+        }
+    }
+
+    // ...
+}
+```
