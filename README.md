@@ -23,6 +23,9 @@
 	* Proxy
 	* cglib
 7. [AOP面向切面编程](#AOP面向切面编程)
+	* 专属名词
+	* 基于XML的AOP
+	* 基于注解的AOP
 
 ## IOC控制反转
 * 概括：就是把创建对象的工作交给spring容器，以此来降低耦合
@@ -303,7 +306,7 @@ value：用于指定bean的id。当我们不写时，它的默认值是当前类
 
 ### 和生命周期相关的注解（他们的作用就和在bean标签中使用init-method和destroy-method的作用是一样的）
 	* PreDestroy（用于指定销毁方法）
-	* PostConstruct（用于指定初始化方法）3
+	* PostConstruct（用于指定初始化方法）
 
 ## 新注解（用于配置类）
 ### 主配置类
@@ -428,7 +431,7 @@ public class QueryRunnerTest {
 ``` 
 
 ## spring集成junit
-###添加依赖
+### 添加依赖
 ```xml
 <dependency>
     <groupId>org.springframework</groupId>
@@ -436,7 +439,7 @@ public class QueryRunnerTest {
     <version>5.0.2.RELEASE</version>
 </dependency>
 ```
-###实例
+### 实例
 ```java
 /**
  * 使用Junit单元测试：测试我们的配置
