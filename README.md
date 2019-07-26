@@ -26,6 +26,10 @@
 	* 专属名词
 	* 基于XML的AOP
 	* 基于注解的AOP
+8. [Spring中的JdbcTemplate](#Spring中的JdbcTemplate)
+	* 添加依赖
+	* 使用JdbcTmplate进行CRUD
+	* 抽取公共代码JdbcTemplate
 
 ## IOC控制反转
 * 概括：就是把创建对象的工作交给spring容器，以此来降低耦合
@@ -859,3 +863,133 @@ public class Logger {
     <!-- 配置spring开启注解AOP的支持 -->
     <aop:aspectj-autoproxy/>
 	```
+
+## Spring中的JdbcTemplate
+### 添加依赖
+```xml
+<dependencies>
+    <!-- spring核心 -->
+    <dependency>
+        <groupId>org.springframework</groupId>
+        <artifactId>spring-context</artifactId>
+        <version>5.0.2.RELEASE</version>
+    </dependency>
+
+    <!-- jdbc二件套 -->
+    <dependency>
+        <groupId>org.springframework</groupId>
+        <artifactId>spring-jdbc</artifactId>
+        <version>5.0.2.RELEASE</version>
+    </dependency>
+
+    <dependency>
+        <groupId>org.springframework</groupId>
+        <artifactId>spring-tx</artifactId>
+        <version>5.0.2.RELEASE</version>
+    </dependency>
+
+    <!-- 数据库驱动 -->
+    <dependency>
+        <groupId>mysql</groupId>
+        <artifactId>mysql-connector-java</artifactId>
+        <version>5.1.6</version>
+    </dependency>
+</dependencies>
+``` 
+
+### bean.xml示例
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+       xmlns:context="http://www.springframework.org/schema/context"
+       xsi:schemaLocation="http://www.springframework.org/schema/beans
+        http://www.springframework.org/schema/beans/spring-beans.xsd
+        http://www.springframework.org/schema/context
+        http://www.springframework.org/schema/context/spring-context.xsd">
+
+    <!-- 使用注解配置的时候需要 -->
+    <context:component-scan base-package="com.spring"/>
+
+    <!-- 配置DAO -->
+    <bean id="accountDao" class="com.spring.dao.impl.AccountDaoImpl">
+        <!-- 方式一：通过jdbcTemplate配置
+        <property name="jdbcTemplate" ref="jdbcTemplate"/>-->
+        <!-- 方式二：直接通过数据源配置 -->
+        <property name="dataSource" ref="dataSource"/>
+    </bean>
+
+    <!-- 配置jdbcTemplate -->
+    <bean id="jdbcTemplate" class="org.springframework.jdbc.core.JdbcTemplate">
+        <property name="dataSource" ref="dataSource"/>
+    </bean>
+
+    <!-- 配置数据源 -->
+    <bean id="dataSource" class="org.springframework.jdbc.datasource.DriverManagerDataSource">
+        <property name="driverClassName" value="com.mysql.jdbc.Driver"/>
+        <property name="url" value="jdbc:mysql://localhost:3306/spring"/>
+        <property name="username" value="root"/>
+        <property name="password" value="Bow1024"/>
+    </bean>
+</beans>
+```
+
+### 使用JdbcTmplate进行CRUD
+* 其中添加、更新、删除均为 update(sql语句,参数列表)，如：
+```java
+public void updateAccount(Account account) {
+    jdbcTemplate.update("update account set name = ?,money = ? where id = ?", account.getName(),
+            account.getMoney(), account.getId());
+}
+```
+* 查询都是返回List集合,可以通过get(0)来获取查询返回单一值，且指定返回结果类型需要使用new BeanPropertyRowMapper<XXX>(XXX.class),如：
+```java
+public Account findByName(String name) {
+    List<Account> accounts = jdbcTemplate.query("select * from account where name = ?",
+            new BeanPropertyRowMapper<Account>(Account.class), name);
+    if (accounts == null) {
+        return null;
+    }
+    if (accounts.size() > 1) {
+        throw new RuntimeException("结果不唯一");
+    }
+    return accounts.get(0);
+}
+```
+* 查询返回一行一列数据，使用queryForObject（SQL语句，XXX.class）前提是可以XXX可转化,如：
+```java
+public long totalAccount() {
+    return jdbcTemplate.queryForObject("select count(*) from account",Long.class);
+}
+```
+
+### 抽取公共代码JdbcTemplate
+* 使用XML配置时：继承JdbcDaoSupport，通过getJdbcTemplate()获取：
+```java
+public class AccountDaoImpl extends JdbcDaoSupport implements AccountDao {
+    public Account findById(int id) {
+        List<Account> accounts = getJdbcTemplate().query("select * from account where id = ?",
+                new BeanPropertyRowMapper<Account>(Account.class), id);
+        return accounts == null ? null : accounts.get(0);
+    }
+
+    // 其他代码...
+}
+```
+* 使用注解配置时：不继承（因为如果再使用上面的代码，注解不好添加，因为JdbcDaoSupport是别人的类）
+```java
+@Repository("accountDao2")
+public class AccountDaoImpl2 implements AccountDao {
+
+    @Autowired
+    private JdbcTemplate jdbcTemplate;
+
+    public Account findById(int id) {
+        List<Account> accounts = jdbcTemplate.query("select * from account where id = ?",
+                new BeanPropertyRowMapper<Account>(Account.class), id);
+        return accounts == null ? null : accounts.get(0);
+    }
+
+    // 其他代码...
+}
+```
