@@ -30,6 +30,11 @@
 	* 添加依赖
 	* 使用JdbcTmplate进行CRUD
 	* 抽取公共代码JdbcTemplate
+9. [声明式事务控制](#声明式事务控制)
+	* 事务的一些基本知识
+	* 基于XML事务控制
+	* 基于纯注解的事务控制
+10. [基于编程式事务控制（了解）](#基于编程式事务控制（了解）)
 
 ## IOC控制反转
 * 概括：就是把创建对象的工作交给spring容器，以此来降低耦合
@@ -845,7 +850,7 @@ public class Logger {
     }
 ```
 * 注意事项
-	1. 基于注解的aop，通知在执行顺序上存在问题，由运行结果可以看到最终通知优先于后置通知执行（所以在选择注解还是XML上需要考虑）
+	1. 基于注解的aop，通知在执行顺序上存在问题，由运行结果可以看到最终通知优先于后置通知执行（所以在选择注解还是XML上需要考虑，此外也可以用环绕通知解决上述问题 ）
 	```
 	【运行结果】
 	前置通知...
@@ -991,5 +996,301 @@ public class AccountDaoImpl2 implements AccountDao {
     }
 
     // 其他代码...
+}
+```
+
+## 声明式事务控制
+### 概念
+事务的配置通常是在service层，用来保证业务逻辑上数据的原子性。因为在service层有可能会调用多个dao中的方法操作数据库，这些方法的操作就需要事务来保证其一致性。
+
+### 事务管理相关API
+* spring中有一个PlatformTransactionManager接口，该接口叫做事务管理器接口，我们会使用它的两个实现类来完成事务的控制：
+	* DataSourceTransactionManager：使用 JDBC 或 myBatis 进行持久化数据时使用。
+	* HibernateTransactionManager：使用 Hibernate 进行持久化数据时使用。
+* Spring 事务的默认回滚方式是：发生运行时异常时回滚，发生一般性异常时提交。不过，对于一般性异常，我们也可以手工设置其回滚方式。
+* 复习一下异常方面的知识：
+	* 运行时异常：程序在运行时才会出现的异常，是RuntimeException的子类，例如NullPointerException空指针异常。
+	* 一般性异常：即在代码编写时要求必须捕获或抛出的异常，若不处理，则无法通过编译，例如IOException。
+
+### 五个事务隔离级别常量
+* 这些常量均是以 ISOLATION_开头。例如 ISOLATION_REPEAT ABLE_READ。
+
+	* DEFAULT：采用 DB 默认的事务隔离级别。MySql 的默认为 REPEATABLE_READ；Oracle默认为 READ_COMMITTED。
+	* READ_UNCOMMITTED：读未提交。未解决任何问题。
+	* READ_COMMITTED：读已提交。解决脏读，存在不可重复读与幻读。
+	* REPEATABLE_READ：可重复读。解决脏读、不可重复读，存在幻读
+	* SERIALIZABLE：串行化。解决脏读、不可重复读，幻读的问题，效率低。
+
+### 七个事务传播行为常量
+* 事务的传播行为指的是处于不同事务中的方法在相互调用时，执行期间事务的维护情况。如，A 事务中的方法 doSome()调用 B 事务中的方法 doOther()，在调用执行期间事务的维护情况，就称为事务传播行为。事务传播行为是加在方法上的。
+* 事务传播行为常量都是以 PROPAGATION_ 开头，例如 PROPAGATION_REQUIRED。
+
+	* REQUIRED
+指定的方法必须在事务内执行。若当前存在事务，就加入到当前事务中；若当前没有事
+务，则创建一个新事务。这种传播行为是最常见的选择，也是 Spring 默认的事务传播行为。
+如该传播行为加在 doOther()方法上。若 doSome()方法在调用 doOther()方法时就是在事
+务内运行的，则 doOther()方法的执行也加入到该事务内执行。若 doSome()方法在调用
+doOther()方法时没有在事务内执行，则 doOther()方法会创建一个事务，并在其中执行。
+
+	* SUPPORTS
+指定的方法支持当前事务，但若当前没有事务，也可以以非事务方式执行。
+
+	* MANDATORY
+指定的方法必须在当前事务内执行，若当前没有事务，则直接抛出异常。
+
+	* REQUIRES_NEW
+总是新建一个事务，若当前存在事务，就将当前事务挂起，直到新事务执行完毕。
+
+	* NOT_SUPPORTED
+指定的方法不能在事务环境中执行，若当前存在事务，就将当前事务挂起。
+
+	* NEVER
+指定的方法不能在事务环境下执行，若当前存在事务，就直接抛出异常。
+
+	* NESTED
+指定的方法必须在事务内执行。若当前存在事务，则在嵌套事务内执行；若当前没有事务，则创建一个新事务。
+
+### 默认事务超时时限
+* 常量 TIMEOUT_DEFAULT 定义了事务底层默认的超时时限，及不支持事务超时时限设置的 none 值。
+* 注意，事务的超时时限起作用的条件比较多，且超时的时间计算点较复杂。所以，该值一般就使用默认值即可，默认值是-1。
+
+### 相关依赖(有一些是项目需要的依赖)
+```xml
+<dependencies>
+        <dependency>
+            <groupId>org.springframework</groupId>
+            <artifactId>spring-context</artifactId>
+            <version>5.0.2.RELEASE</version>
+        </dependency>
+
+        <dependency>
+            <groupId>org.springframework</groupId>
+            <artifactId>spring-jdbc</artifactId>
+            <version>5.0.2.RELEASE</version>
+        </dependency>
+
+        <dependency>
+            <groupId>org.springframework</groupId>
+            <artifactId>spring-tx</artifactId>
+            <version>5.0.2.RELEASE</version>
+        </dependency>
+
+        <dependency>
+            <groupId>org.springframework</groupId>
+            <artifactId>spring-test</artifactId>
+            <version>5.0.2.RELEASE</version>
+        </dependency>
+
+        <dependency>
+            <groupId>mysql</groupId>
+            <artifactId>mysql-connector-java</artifactId>
+            <version>5.1.6</version>
+        </dependency>
+
+        <dependency>
+            <groupId>org.aspectj</groupId>
+            <artifactId>aspectjweaver</artifactId>
+            <version>1.8.7</version>
+        </dependency>
+    </dependencies>
+```
+
+### 基于XML的事务控制
+```xml
+<!-- spring中基于XML的声明式事务控制配置步骤
+    1、配置事务管理器
+    2、配置事务的通知
+            此时我们需要导入事务的约束 tx名称空间和约束，同时也需要aop的
+            使用tx:advice标签配置事务通知
+                属性：
+                    id：给事务通知起一个唯一标识
+                    transaction-manager：给事务通知提供一个事务管理器引用
+    3、配置AOP中的通用切入点表达式
+    4、建立事务通知和切入点表达式的对应关系
+    5、配置事务的属性
+           是在事务的通知tx:advice标签的内部
+
+ -->
+<!-- 1、配置事务管理器 -->
+<bean id="transactionManager" class="org.springframework.jdbc.datasource.DataSourceTransactionManager">
+    <property name="dataSource" ref="dataSource"/>
+</bean>
+<!-- 2、配置事务的通知 -->
+<tx:advice id="txAdvice" transaction-manager="transactionManager">
+    <!-- 配置事务的属性
+            isolation：用于指定事务的隔离级别。默认值是DEFAULT，表示使用数据库的默认隔离级别。
+            propagation：用于指定事务的传播行为。默认值是REQUIRED，表示一定会有事务，增删改的选择。查询方法可以选择SUPPORTS。
+            read-only：用于指定事务是否只读。只有查询方法才能设置为true。默认值是false，表示读写。
+            timeout：用于指定事务的超时时间，默认值是-1，表示永不超时。如果指定了数值，以秒为单位。
+            rollback-for：用于指定一个异常，当产生该异常时，事务回滚，产生其他异常时，事务不回滚。没有默认值。表示任何异常都回滚。
+            no-rollback-for：用于指定一个异常，当产生该异常时，事务不回滚，产生其他异常时事务回滚。没有默认值。表示任何异常都回滚。
+    -->
+    <tx:attributes>
+        <tx:method name="find*" read-only="true" propagation="SUPPORTS"/>
+        <tx:method name="transfer"/>
+    </tx:attributes>
+</tx:advice>
+<!-- 3、配置AOP中的通用切入点表达式 -->
+<aop:config>
+    <!-- 配置切入点表达式-->
+    <aop:pointcut id="pt1" expression="execution(* com.spring.service.*.*(..))"/>
+    <!--建立切入点表达式和事务通知的对应关系 -->
+    <aop:advisor advice-ref="txAdvice" pointcut-ref="pt1"/>
+</aop:config>
+```
+
+### 基于注解的事务控制
+1. 创建相应的配置类
+```java
+/**
+ * SpringConfiguration class
+ * 主配置类
+ */
+@Configuration
+@ComponentScan("com.spring")
+@Import({JdbcConfig.class, TransactionConfig.class})
+@PropertySources({@PropertySource("jdbcConfig.properties")})
+@EnableTransactionManagement
+public class SpringConfiguration {
+}
+```
+```java
+/**
+ * JdbcConfig class
+ * 数据库相关配置
+ */
+public class JdbcConfig {
+
+    @Value("${jdbc.driverClass}")
+    private String driverClass;
+
+    @Value("${jdbc.url}")
+    private String url;
+
+    @Value("${jdbc.username}")
+    private String username;
+
+    @Value("${jdbc.password}")
+    private String password;
+    /**
+     * 创建JdbcTemplate
+     * @param dataSource
+     * @return
+     */
+    @Bean(name = "jdbcTemplate")
+    public JdbcTemplate createJdbcTemplate(DataSource dataSource) {
+        return new JdbcTemplate(dataSource);
+    }
+
+    /**
+     * 创建数据源
+     * @return
+     */
+    @Bean(name = "dataSource")
+    public DataSource createDataSource() {
+        DriverManagerDataSource driverManagerDataSource = new DriverManagerDataSource();
+        driverManagerDataSource.setDriverClassName(driverClass);
+        driverManagerDataSource.setUrl(url);
+        driverManagerDataSource.setUsername(username);
+        driverManagerDataSource.setPassword(password);
+        return driverManagerDataSource;
+    }
+}
+```
+```java
+/**
+ * TransactionConfig class
+ * 事务管理配置类
+ */
+public class TransactionConfig {
+
+    /**
+     * 创建事务管理器
+     * @param dataSource
+     * @return
+     */
+    @Bean("transactionManager")
+    public PlatformTransactionManager createPlatformTransactionManager(DataSource dataSource) {
+        return new DataSourceTransactionManager(dataSource);
+    }
+}
+```
+2. 对应Service和Dao层实现类进行注解IOC和DI
+3. 对需要添加的事务方法上添加注解@Transactional【可以在类上，也可以在方法上】
+```java
+/**
+ * AccountServiceImpl class
+ * 账户业务实现类
+ */
+@Service("accountService")
+@Transactional(propagation= Propagation.SUPPORTS, readOnly=true)//只读型事务的配置
+public class AccountServiceImpl implements AccountService {
+
+    @Autowired
+    private AccountDao accountDao;
+
+    @Override
+    public Account findAccountByName(String name) {
+        return accountDao.findAccountByName(name);
+    }
+
+    @Override
+    //需要的是读写型事务配置
+    @Transactional(propagation = Propagation.REQUIRED)
+    public void transfer(String outAccount, String inAccount, float money) {
+        Account out = accountDao.findAccountByName(outAccount);
+        Account in = accountDao.findAccountByName(inAccount);
+        out.setMoney(out.getMoney() - money);
+        in.setMoney(in.getMoney() + money);
+        accountDao.updateAccount(out);
+        //int error = 1 / 0;
+        accountDao.updateAccount(in);
+    }
+}
+```
+
+### 基于编程式事务控制（了解）
+编程式事务：就是直接在代码里手动开启事务，手动提交，手动回滚。优点就是可以灵活控制，缺点就是太麻烦了，太多重复的代码了。
+```java
+/**
+ * 账户的业务层实现类
+ * 缺点：
+ * 每个方法都要写transactionTemplate.execute(new TransactionCallback<Account>() {...} 
+ */
+public class AccountServiceImpl implements IAccountService{
+
+    private IAccountDao accountDao;
+
+    private TransactionTemplate transactionTemplate;
+
+    public void setTransactionTemplate(TransactionTemplate transactionTemplate) {
+        this.transactionTemplate = transactionTemplate;
+    }
+
+    public void setAccountDao(IAccountDao accountDao) {
+        this.accountDao = accountDao;
+    }
+
+    @Override
+    public Account findAccountById(Integer accountId) {
+      return  transactionTemplate.execute(new TransactionCallback<Account>() {
+            @Override
+            public Account doInTransaction(TransactionStatus status) {
+                return accountDao.findAccountById(accountId);
+            }
+        });
+    }
+
+    @Override
+    public void transfer(String sourceName, String targetName, Float money) {
+        transactionTemplate.execute(new TransactionCallback<Object>() {
+            @Override
+            public Object doInTransaction(TransactionStatus status) {
+                // 调用Dao层...
+                return null;
+            }
+        });
+
+    }
 }
 ```
